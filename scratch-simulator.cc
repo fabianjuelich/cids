@@ -65,6 +65,8 @@ using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("WifiSimpleAdhoc");
 
+bool channelBonding = true;
+
 /**
  * Function called when a packet is received.
  *
@@ -125,9 +127,6 @@ main(int argc, char* argv[])
     cmd.AddValue("verbose", "turn on all WifiNetDevice log components", verbose);
     cmd.Parse(argc, argv);
 
-    // Fix non-unicast data rate to be the same as that of unicast
-    Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode", StringValue(phyMode));
-
     NodeContainer c;
     c.Create(2);
 
@@ -137,12 +136,16 @@ main(int argc, char* argv[])
     {
         WifiHelper::EnableLogComponents(); // Turn on all Wifi logging
     }
-    wifi.SetStandard(WIFI_STANDARD_80211b);
+    wifi.SetStandard(WIFI_STANDARD_80211n);
 
     YansWifiPhyHelper wifiPhy;
     // This is one parameter that matters when using FixedRssLossModel
     // set it to zero; otherwise, gain will be added
-    wifiPhy.Set("RxGain", DoubleValue(0));
+    wifiPhy.Set("RxGain", DoubleValue(1));
+    wifiPhy.Set("TxGain", DoubleValue(1));
+    wifiPhy.Set("ChannelSettings", StringValue(std::string("{0, ") + (channelBonding ? "40, " : "20, ") + "BAND_5GHZ" + ", 0}"));
+    wifiPhy.Set("TxPowerStart", DoubleValue(10));
+    wifiPhy.Set("TxPowerEnd", DoubleValue(10));
     // ns-3 supports RadioTap and Prism tracing extensions for 802.11b
     wifiPhy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
 
@@ -151,15 +154,12 @@ main(int argc, char* argv[])
     // The below FixedRssLossModel will cause the rss to be fixed regardless
     // of the distance between the two stations, and the transmit power
     wifiChannel.AddPropagationLoss("ns3::FixedRssLossModel", "Rss", DoubleValue(rss));
+    // wifiChannel.AddPropagationLoss("ns3::TwoRayGroundPropagationLossModel");
     wifiPhy.SetChannel(wifiChannel.Create());
 
-    // Add a mac and disable rate control
+    // Add a mac
     WifiMacHelper wifiMac;
-    wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
-                                 "DataMode",
-                                 StringValue(phyMode),
-                                 "ControlMode",
-                                 StringValue(phyMode));
+
     // Set it to adhoc mode
     wifiMac.SetType("ns3::AdhocWifiMac");
     NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, c);
