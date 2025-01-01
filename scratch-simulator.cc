@@ -113,9 +113,13 @@ main(int argc, char* argv[])
 {
     std::string phyMode("DsssRate1Mbps");
     double rss{-80};           // -dBm
-    uint32_t packetSize{1000}; // bytes
+    uint32_t packetSize{1450}; // bytes
     uint32_t numPackets{1};
-    Time interPacketInterval{"1s"};
+    uint32_t dataRate{75};    // mbps
+    double interval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
+    double distance{5};
+    Time interPacketInterval{Seconds(interval)};
+    uint32_t simulationTime{60};
     bool verbose{false};
 
     CommandLine cmd(__FILE__);
@@ -123,7 +127,10 @@ main(int argc, char* argv[])
     cmd.AddValue("rss", "received signal strength", rss);
     cmd.AddValue("packetSize", "size of application packet sent", packetSize);
     cmd.AddValue("numPackets", "number of packets generated", numPackets);
+    cmd.AddValue("dataRate", "data rate of the udp traffic", numPackets);
     cmd.AddValue("interval", "interval between packets", interPacketInterval);
+    cmd.AddValue("distance", "distance between nodes in meters", distance);
+    cmd.AddValue("simulationTime", "simulation time in seconds", interPacketInterval);
     cmd.AddValue("verbose", "turn on all WifiNetDevice log components", verbose);
     cmd.Parse(argc, argv);
 
@@ -169,7 +176,7 @@ main(int argc, char* argv[])
     MobilityHelper mobility;
     Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     positionAlloc->Add(Vector(0.0, 0.0, 0.0));
-    positionAlloc->Add(Vector(5.0, 0.0, 0.0));
+    positionAlloc->Add(Vector(distance, 0.0, 0.0));
     mobility.SetPositionAllocator(positionAlloc);
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobility.Install(c);
@@ -207,6 +214,7 @@ main(int argc, char* argv[])
                                    numPackets,
                                    interPacketInterval);
 
+    Simulator::Stop(Seconds(simulationTime));
     Simulator::Run();
     Simulator::Destroy();
 
