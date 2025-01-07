@@ -60,6 +60,7 @@
 #include "ns3/string.h"
 #include "ns3/yans-wifi-channel.h"
 #include "ns3/yans-wifi-helper.h"
+#include "ns3/flow-monitor-helper.h"
 
 using namespace ns3;
 
@@ -196,7 +197,7 @@ main(int argc, char* argv[])
     recvSink->SetRecvCallback(MakeCallback(&ReceivePacket));
 
     Ptr<Socket> source = Socket::CreateSocket(c.Get(1), tid);
-    InetSocketAddress remote = InetSocketAddress(Ipv4Address("255.255.255.255"), 80);
+    InetSocketAddress remote = InetSocketAddress(i.GetAddress(0), 80);  // Use unicast address because broadcast doesn't work for Flow Monitor
     source->SetAllowBroadcast(true);
     source->Connect(remote);
 
@@ -214,9 +215,16 @@ main(int argc, char* argv[])
                                    numPackets,
                                    interPacketInterval);
 
+    // Flow monitor
+    Ptr<FlowMonitor> flowMonitor;
+    FlowMonitorHelper flowHelper;
+    flowMonitor = flowHelper.InstallAll();
+
     Simulator::Stop(Seconds(simulationTime));
     Simulator::Run();
     Simulator::Destroy();
+    
+    flowMonitor->SerializeToXmlFile("flow.xml", true, true);
 
     return 0;
 }
