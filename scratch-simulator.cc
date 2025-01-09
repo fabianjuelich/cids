@@ -16,39 +16,6 @@
  *
  */
 
-// This script configures two nodes on an 802.11b physical layer, with
-// 802.11b NICs in adhoc mode, and by default, sends one packet of 1000
-// (application) bytes to the other node.  The physical layer is configured
-// to receive at a fixed RSS (regardless of the distance and transmit
-// power); therefore, changing position of the nodes has no effect.
-//
-// There are a number of command-line options available to control
-// the default behavior.  The list of available command-line options
-// can be listed with the following command:
-// ./ns3 run "wifi-simple-adhoc --help"
-//
-// For instance, for this configuration, the physical layer will
-// stop successfully receiving packets when rss drops below -97 dBm.
-// To see this effect, try running:
-//
-// ./ns3 run "wifi-simple-adhoc --rss=-97 --numPackets=20"
-// ./ns3 run "wifi-simple-adhoc --rss=-98 --numPackets=20"
-// ./ns3 run "wifi-simple-adhoc --rss=-99 --numPackets=20"
-//
-// Note that all ns-3 attributes (not just the ones exposed in the below
-// script) can be changed at command line; see the documentation.
-//
-// This script can also be helpful to put the Wifi layer into verbose
-// logging mode; this command will turn on all wifi logging:
-//
-// ./ns3 run "wifi-simple-adhoc --verbose=1"
-//
-// When you are done, you will notice two pcap trace files in your directory.
-// If you have tcpdump installed, you can try this:
-//
-// tcpdump -r wifi-simple-adhoc-0-0.pcap -nn -tt
-//
-
 #include "ns3/command-line.h"
 #include "ns3/config.h"
 #include "ns3/double.h"
@@ -60,26 +27,26 @@
 #include "ns3/string.h"
 #include "ns3/yans-wifi-channel.h"
 #include "ns3/yans-wifi-helper.h"
+#include "ns3/wifi-net-device.h"
 #include "ns3/flow-monitor-helper.h"
 
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("WifiSimpleAdhoc");
 
-bool channelBonding = true;
+std::ofstream outputFile("results.csv");
 
-/**
- * Function called when a packet is received.
- *
- * \param socket The receiving socket.
- */
-void
-ReceivePacket(Ptr<Socket> socket)
-{
-    while (socket->Recv())
-    {
-        NS_LOG_UNCOND("Received one packet!");
+void LogResults(const std::string &modelName, double distance, double duration, double signalStrength, double throughput) {
+    if (outputFile.is_open()) {
+        outputFile << modelName << "," << distance << "," << duration << ","  << signalStrength << "," << throughput << "\n";
     }
+}
+
+double signalStrength = 0;
+
+void SnifferRx(Ptr<Packet const> packet, unsigned short x, WifiTxVector wtv, MpduInfo mi, SignalNoiseDbm snd, unsigned short y)
+{
+    signalStrength = snd.signal;
 }
 
 /**
@@ -112,26 +79,25 @@ GenerateTraffic(Ptr<Socket> socket, uint32_t pktSize, uint32_t pktCount, Time pk
 int
 main(int argc, char* argv[])
 {
-    std::string phyMode("DsssRate1Mbps");
-    double rss{-80};           // -dBm
     uint32_t packetSize{1450}; // bytes
-    uint32_t numPackets{1};
     uint32_t dataRate{75};    // mbps
-    double interval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
-    double distance{5};
-    Time interPacketInterval{Seconds(interval)};
-    uint32_t simulationTime{60};
+    bool channelBonding = true;
+    std::string model = ("ns3::NakagamiPropagationLossModel");
+    double distance{55}; // meters
+    double duration{8};  // seconds
+    double interPacketInterval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
+    uint32_t numPackets{(uint32_t)(duration / interPacketInterval)};
     bool verbose{false};
 
     CommandLine cmd(__FILE__);
-    cmd.AddValue("phyMode", "Wifi Phy mode", phyMode);
-    cmd.AddValue("rss", "received signal strength", rss);
     cmd.AddValue("packetSize", "size of application packet sent", packetSize);
-    cmd.AddValue("numPackets", "number of packets generated", numPackets);
-    cmd.AddValue("dataRate", "data rate of the udp traffic", numPackets);
-    cmd.AddValue("interval", "interval between packets", interPacketInterval);
+    cmd.AddValue("dataRate", "data rate of the udp traffic", dataRate);
+    cmd.AddValue("channelBonding", "use channel bonding", channelBonding);
+    cmd.AddValue("model", "propagation model to use", model);
     cmd.AddValue("distance", "distance between nodes in meters", distance);
-    cmd.AddValue("simulationTime", "simulation time in seconds", interPacketInterval);
+    cmd.AddValue("duration", "simulation time in seconds", duration);
+    cmd.AddValue("interval", "interval between packets", interPacketInterval);
+    cmd.AddValue("numPackets", "number of packets generated", numPackets);
     cmd.AddValue("verbose", "turn on all WifiNetDevice log components", verbose);
     cmd.Parse(argc, argv);
 
@@ -147,8 +113,6 @@ main(int argc, char* argv[])
     wifi.SetStandard(WIFI_STANDARD_80211n);
 
     YansWifiPhyHelper wifiPhy;
-    // This is one parameter that matters when using FixedRssLossModel
-    // set it to zero; otherwise, gain will be added
     wifiPhy.Set("RxGain", DoubleValue(1));
     wifiPhy.Set("TxGain", DoubleValue(1));
     wifiPhy.Set("ChannelSettings", StringValue(std::string("{0, ") + (channelBonding ? "40, " : "20, ") + "BAND_5GHZ" + ", 0}"));
@@ -159,10 +123,7 @@ main(int argc, char* argv[])
 
     YansWifiChannelHelper wifiChannel;
     wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
-    // The below FixedRssLossModel will cause the rss to be fixed regardless
-    // of the distance between the two stations, and the transmit power
-    wifiChannel.AddPropagationLoss("ns3::FixedRssLossModel", "Rss", DoubleValue(rss));
-    // wifiChannel.AddPropagationLoss("ns3::TwoRayGroundPropagationLossModel");
+    wifiChannel.AddPropagationLoss(model);
     wifiPhy.SetChannel(wifiChannel.Create());
 
     // Add a mac
@@ -172,8 +133,6 @@ main(int argc, char* argv[])
     wifiMac.SetType("ns3::AdhocWifiMac");
     NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, c);
 
-    // Note that with FixedRssLossModel, the positions below are not
-    // used for received signal strength.
     MobilityHelper mobility;
     Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     positionAlloc->Add(Vector(0.0, 0.0, 0.0));
@@ -194,7 +153,6 @@ main(int argc, char* argv[])
     Ptr<Socket> recvSink = Socket::CreateSocket(c.Get(0), tid);
     InetSocketAddress local = InetSocketAddress(i.GetAddress(0), 80);
     recvSink->Bind(local);
-    recvSink->SetRecvCallback(MakeCallback(&ReceivePacket));
 
     Ptr<Socket> source = Socket::CreateSocket(c.Get(1), tid);
     InetSocketAddress remote = InetSocketAddress(i.GetAddress(0), 80);  // Use unicast address because broadcast doesn't work for Flow Monitor
@@ -205,7 +163,7 @@ main(int argc, char* argv[])
     wifiPhy.EnablePcap("wifi-simple-adhoc", devices);
 
     // Output what we are doing
-    NS_LOG_UNCOND("Testing " << numPackets << " packets sent with receiver rss " << rss);
+    NS_LOG_UNCOND("Testing " << numPackets << " packets sent");
 
     Simulator::ScheduleWithContext(source->GetNode()->GetId(),
                                    Seconds(1.0),
@@ -213,18 +171,34 @@ main(int argc, char* argv[])
                                    source,
                                    packetSize,
                                    numPackets,
-                                   interPacketInterval);
+                                   Time{Seconds(interPacketInterval)});
 
     // Flow monitor
     Ptr<FlowMonitor> flowMonitor;
     FlowMonitorHelper flowHelper;
     flowMonitor = flowHelper.InstallAll();
 
-    Simulator::Stop(Seconds(simulationTime));
+    // Tracing the signal strength
+    Ptr<NetDevice> dev = devices.Get(0);
+    Ptr<WifiNetDevice> wifiDev = DynamicCast<WifiNetDevice>(dev);
+    Ptr<WifiPhy> phy = wifiDev->GetPhy();
+    phy->TraceConnectWithoutContext("MonitorSnifferRx", MakeCallback(&SnifferRx));
+
+    Simulator::Stop(Seconds(duration));
     Simulator::Run();
     Simulator::Destroy();
     
-    flowMonitor->SerializeToXmlFile("flow.xml", true, true);
+    // Calculating the throughput
+    double throughput = 0.0;
+    FlowMonitor::FlowStatsContainer stats = flowMonitor->GetFlowStats();
+    if (!stats.empty()) {
+        auto flow = stats.rbegin();
+        throughput = flow->second.rxBytes * 8.0 / duration / 1e6; // Mbps
+    }
+
+    LogResults(model, distance, duration, signalStrength, throughput);
+
+    outputFile.close();
 
     return 0;
 }
