@@ -83,8 +83,8 @@ main(int argc, char* argv[])
     uint32_t dataRate{75};    // mbps
     bool channelBonding = true;
     std::string model = ("ns3::NakagamiPropagationLossModel");
-    double distance{55}; // meters
-    double duration{8};  // seconds
+    double distance{1}; // meters
+    double duration{2};  // seconds
     double interPacketInterval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
     uint32_t numPackets{(uint32_t)(duration / interPacketInterval)};
     bool verbose{false};
@@ -100,103 +100,124 @@ main(int argc, char* argv[])
     cmd.AddValue("numPackets", "number of packets generated", numPackets);
     cmd.AddValue("verbose", "turn on all WifiNetDevice log components", verbose);
     cmd.Parse(argc, argv);
+    double distance_{distance};
 
-    NodeContainer c;
-    c.Create(2);
+    // Propagation models to evaluate
+    std::vector<std::string> propagationModels = {
+        "ns3::FriisPropagationLossModel",
+        "ns3::FixedRssLossModel",
+        "ns3::ThreeLogDistancePropagationLossModel",
+        "ns3::TwoRayGroundPropagationLossModel",
+        "ns3::NakagamiPropagationLossModel"
+    };
 
-    // The below set of helpers will help us to put together the wifi NICs we want
-    WifiHelper wifi;
-    if (verbose)
-    {
-        WifiHelper::EnableLogComponents(); // Turn on all Wifi logging
+    // csv table
+    outputFile << "PropagationModel,Distance,Duration,SignalStrength,Throughput" << std::endl;
+
+    for (const auto &model : propagationModels) {
+        // reset
+        distance = distance_;
+        double throughput = 0.0;
+        do {
+            NodeContainer c;
+            c.Create(2);
+
+            // The below set of helpers will help us to put together the wifi NICs we want
+            WifiHelper wifi;
+            if (verbose)
+            {
+                WifiHelper::EnableLogComponents(); // Turn on all Wifi logging
+            }
+            wifi.SetStandard(WIFI_STANDARD_80211n);
+
+            YansWifiPhyHelper wifiPhy;
+            wifiPhy.Set("RxGain", DoubleValue(1));
+            wifiPhy.Set("TxGain", DoubleValue(1));
+            wifiPhy.Set("ChannelSettings", StringValue(std::string("{0, ") + (channelBonding ? "40, " : "20, ") + "BAND_5GHZ" + ", 0}"));
+            wifiPhy.Set("TxPowerStart", DoubleValue(10));
+            wifiPhy.Set("TxPowerEnd", DoubleValue(10));
+            // ns-3 supports RadioTap and Prism tracing extensions for 802.11b
+            wifiPhy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
+
+            YansWifiChannelHelper wifiChannel;
+            wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+            wifiChannel.AddPropagationLoss(model);
+            wifiPhy.SetChannel(wifiChannel.Create());
+
+            // Add a mac
+            WifiMacHelper wifiMac;
+
+            // Set it to adhoc mode
+            wifiMac.SetType("ns3::AdhocWifiMac");
+            NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, c);
+
+            MobilityHelper mobility;
+            Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
+            positionAlloc->Add(Vector(0.0, 0.0, 0.0));
+            positionAlloc->Add(Vector(distance, 0.0, 0.0));
+            mobility.SetPositionAllocator(positionAlloc);
+            mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+            mobility.Install(c);
+
+            InternetStackHelper internet;
+            internet.Install(c);
+
+            Ipv4AddressHelper ipv4;
+            NS_LOG_INFO("Assign IP Addresses.");
+            ipv4.SetBase("10.1.1.0", "255.255.255.0");
+            Ipv4InterfaceContainer i = ipv4.Assign(devices);
+
+            TypeId tid = TypeId::LookupByName("ns3::UdpSocketFactory");
+            Ptr<Socket> recvSink = Socket::CreateSocket(c.Get(0), tid);
+            InetSocketAddress local = InetSocketAddress(i.GetAddress(0), 80);
+            recvSink->Bind(local);
+
+            Ptr<Socket> source = Socket::CreateSocket(c.Get(1), tid);
+            InetSocketAddress remote = InetSocketAddress(i.GetAddress(0), 80);  // Use unicast address because broadcast doesn't work for Flow Monitor
+            source->SetAllowBroadcast(true);
+            source->Connect(remote);
+
+            // Tracing
+            wifiPhy.EnablePcap("wifi-simple-adhoc", devices);
+
+            // Output what we are doing
+            NS_LOG_UNCOND("" << model << ", " << distance << "m, " << duration << "s");
+
+            Simulator::ScheduleWithContext(source->GetNode()->GetId(),
+                                        Seconds(1.0),
+                                        &GenerateTraffic,
+                                        source,
+                                        packetSize,
+                                        numPackets,
+                                        Time{Seconds(interPacketInterval)});
+
+            // Flow monitor
+            Ptr<FlowMonitor> flowMonitor;
+            FlowMonitorHelper flowHelper;
+            flowMonitor = flowHelper.InstallAll();
+
+            // Tracing the signal strength
+            Ptr<NetDevice> dev = devices.Get(0);
+            Ptr<WifiNetDevice> wifiDev = DynamicCast<WifiNetDevice>(dev);
+            Ptr<WifiPhy> phy = wifiDev->GetPhy();
+            phy->TraceConnectWithoutContext("MonitorSnifferRx", MakeCallback(&SnifferRx));
+
+            Simulator::Stop(Seconds(duration));
+            Simulator::Run();
+            Simulator::Destroy();
+            
+            // Calculating the throughput
+            FlowMonitor::FlowStatsContainer stats = flowMonitor->GetFlowStats();
+            if (!stats.empty()) {
+                auto flow = stats.rbegin();
+                throughput = flow->second.rxBytes * 8.0 / duration / 1e6; // Mbps
+            }
+
+            LogResults(model, distance, duration, signalStrength, throughput);
+
+            distance += 1;
+        } while (throughput > 0);
     }
-    wifi.SetStandard(WIFI_STANDARD_80211n);
-
-    YansWifiPhyHelper wifiPhy;
-    wifiPhy.Set("RxGain", DoubleValue(1));
-    wifiPhy.Set("TxGain", DoubleValue(1));
-    wifiPhy.Set("ChannelSettings", StringValue(std::string("{0, ") + (channelBonding ? "40, " : "20, ") + "BAND_5GHZ" + ", 0}"));
-    wifiPhy.Set("TxPowerStart", DoubleValue(10));
-    wifiPhy.Set("TxPowerEnd", DoubleValue(10));
-    // ns-3 supports RadioTap and Prism tracing extensions for 802.11b
-    wifiPhy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
-
-    YansWifiChannelHelper wifiChannel;
-    wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
-    wifiChannel.AddPropagationLoss(model);
-    wifiPhy.SetChannel(wifiChannel.Create());
-
-    // Add a mac
-    WifiMacHelper wifiMac;
-
-    // Set it to adhoc mode
-    wifiMac.SetType("ns3::AdhocWifiMac");
-    NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, c);
-
-    MobilityHelper mobility;
-    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    positionAlloc->Add(Vector(0.0, 0.0, 0.0));
-    positionAlloc->Add(Vector(distance, 0.0, 0.0));
-    mobility.SetPositionAllocator(positionAlloc);
-    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
-    mobility.Install(c);
-
-    InternetStackHelper internet;
-    internet.Install(c);
-
-    Ipv4AddressHelper ipv4;
-    NS_LOG_INFO("Assign IP Addresses.");
-    ipv4.SetBase("10.1.1.0", "255.255.255.0");
-    Ipv4InterfaceContainer i = ipv4.Assign(devices);
-
-    TypeId tid = TypeId::LookupByName("ns3::UdpSocketFactory");
-    Ptr<Socket> recvSink = Socket::CreateSocket(c.Get(0), tid);
-    InetSocketAddress local = InetSocketAddress(i.GetAddress(0), 80);
-    recvSink->Bind(local);
-
-    Ptr<Socket> source = Socket::CreateSocket(c.Get(1), tid);
-    InetSocketAddress remote = InetSocketAddress(i.GetAddress(0), 80);  // Use unicast address because broadcast doesn't work for Flow Monitor
-    source->SetAllowBroadcast(true);
-    source->Connect(remote);
-
-    // Tracing
-    wifiPhy.EnablePcap("wifi-simple-adhoc", devices);
-
-    // Output what we are doing
-    NS_LOG_UNCOND("Testing " << numPackets << " packets sent");
-
-    Simulator::ScheduleWithContext(source->GetNode()->GetId(),
-                                   Seconds(1.0),
-                                   &GenerateTraffic,
-                                   source,
-                                   packetSize,
-                                   numPackets,
-                                   Time{Seconds(interPacketInterval)});
-
-    // Flow monitor
-    Ptr<FlowMonitor> flowMonitor;
-    FlowMonitorHelper flowHelper;
-    flowMonitor = flowHelper.InstallAll();
-
-    // Tracing the signal strength
-    Ptr<NetDevice> dev = devices.Get(0);
-    Ptr<WifiNetDevice> wifiDev = DynamicCast<WifiNetDevice>(dev);
-    Ptr<WifiPhy> phy = wifiDev->GetPhy();
-    phy->TraceConnectWithoutContext("MonitorSnifferRx", MakeCallback(&SnifferRx));
-
-    Simulator::Stop(Seconds(duration));
-    Simulator::Run();
-    Simulator::Destroy();
-    
-    // Calculating the throughput
-    double throughput = 0.0;
-    FlowMonitor::FlowStatsContainer stats = flowMonitor->GetFlowStats();
-    if (!stats.empty()) {
-        auto flow = stats.rbegin();
-        throughput = flow->second.rxBytes * 8.0 / duration / 1e6; // Mbps
-    }
-
-    LogResults(model, distance, duration, signalStrength, throughput);
 
     outputFile.close();
 
