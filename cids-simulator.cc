@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2009 The Boeing Company
+ * Modifications Copyright (c) 2025 Fabian Jülich
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -40,7 +41,7 @@ using namespace ns3;
 #define TWO_RAY_GROUND "ns3::TwoRayGroundPropagationLossModel"
 #define NAKAGAMI "ns3::NakagamiPropagationLossModel"
 
-NS_LOG_COMPONENT_DEFINE("WifiSimpleAdhoc");
+NS_LOG_COMPONENT_DEFINE("CidsProject");
 
 #ifdef PRELIMINARY
 std::ofstream outputFile("preliminary_results.csv");
@@ -61,14 +62,6 @@ void SnifferRx(Ptr<Packet const> packet, unsigned short x, WifiTxVector wtv, Mpd
     signalStrength = snd.signal;
 }
 
-/**
- * Generate traffic.
- *
- * \param socket The sending socket.
- * \param pktSize The packet size.
- * \param pktCount The packet count.
- * \param pktInterval The interval between two packets.
- */
 static void
 GenerateTraffic(Ptr<Socket> socket, uint32_t pktSize, uint32_t pktCount, Time pktInterval)
 {
@@ -93,7 +86,7 @@ main(int argc, char* argv[])
 {
     uint32_t packetSize{1450}; // bytes
     uint32_t dataRate{75};    // mbps
-    bool channelBonding = true;
+    bool channelBonding = true; // combining channels
     std::string model = ("ns3::FriisPropagationLossModel");
     double distance{1}; // meters
     double duration{60};  // seconds
@@ -122,10 +115,10 @@ main(int argc, char* argv[])
         NAKAGAMI
     };
 
-    // csv table
+    // CSV table
     outputFile << "propagationModel,distance,duration,signalStrength,throughput" << std::endl;
 
-    // simulation experiments
+    // Simulation experiments
     #ifndef PRELIMINARY
     double distance_{distance};
     for (const auto &model : propagationModels) {
@@ -198,7 +191,7 @@ main(int argc, char* argv[])
             NS_LOG_UNCOND("" << model << ", " << distance << "m, " << duration << "s");
 
             #ifdef PRELIMINARY
-            // recalculate with new duration
+            // Recalculate with new duration
             numPackets = (uint32_t)(duration / interPacketInterval);
             #endif
 

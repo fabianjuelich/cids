@@ -4,5 +4,6 @@
 
 !nested-subdir/
 !subdir/
-!scratch-simulator.cc
+!cids-simulator.cc
 !CMakeLists.txt
+!plots/
