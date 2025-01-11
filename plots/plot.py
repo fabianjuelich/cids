@@ -16,38 +16,38 @@ distance = pre_results['distance'][0]
 # Group results by propagation model
 grouped_results = results.groupby("propagationModel")
 
-# Plot 1: Throughput vs Simulation time
+# Plot 1: Runtime vs Throughput
 plt.figure()
 duration = pre_results['duration']
 throughput = pre_results['throughput']
 plt.plot(duration, throughput, marker='o', color='orange')
 
-plt.title(f"UDP Throughput vs Distance for {propagation_model} over {distance}m")
-plt.xlabel("Simulation Runtime (seconds)")
+# plt.title(f"Runtime vs. UDP Throughput with {propagation_model} over {distance} m")
+plt.xlabel("Runtime (seconds)")
 plt.ylabel("Throughput (Mbps)")
 plt.grid(True)
-plt.savefig(os.path.join(PLOTS_DIR, 'throughput_vs_simulation_time.png'))
+plt.savefig(os.path.join(PLOTS_DIR, 'runtime_vs_throughput.png'))
 
-# Plot 2: Signal Strength vs Distance
+# Plot 2: Distance vs Signal Strength
 plt.figure()
 for model, results in grouped_results:
     plt.plot(results["distance"], results["signalStrength"], label=model, marker='o')
 
-plt.title("Signal Strength vs Distance for Different Propagation Models")
+# plt.title("Distance vs. Signal Strength for different propagation models")
 plt.xlabel("Distance (m)")
 plt.ylabel("Signal Strength (dBm)")
 plt.legend(title="Propagation Model")
 plt.grid(True)
-plt.savefig(os.path.join(PLOTS_DIR, "signal_strength_vs_distance.png"))
+plt.savefig(os.path.join(PLOTS_DIR, "distance_vs_signal_strength.png"))
 
-# Plot 3: Throughput vs Distance
+# Plot 3: ThroughpuDistance vs Throughput
 plt.figure()
 for model, results in grouped_results:
     plt.plot(results["distance"], results["throughput"], label=model, marker='o')
 
-plt.title("UDP Throughput vs Distance for Different Propagation Models")
+# plt.title("Distance vs. UDP Throughput for different propagation models")
 plt.xlabel("Distance (m)")
 plt.ylabel("Throughput (Mbps)")
 plt.legend(title="Propagation Model")
 plt.grid(True)
-plt.savefig(os.path.join(PLOTS_DIR, "throughput_vs_distance.png"))
+plt.savefig(os.path.join(PLOTS_DIR, "distance_vs_throughput.png"))
