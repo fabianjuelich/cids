@@ -6,4 +6,5 @@
 !subdir/
 !cids-simulator.cc
 !CMakeLists.txt
+!results/
 !plots/
