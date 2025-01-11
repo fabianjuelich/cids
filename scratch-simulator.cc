@@ -32,9 +32,21 @@
 
 using namespace ns3;
 
+// #define PRELIMINARY
+
+#define FRIIS "ns3::FriisPropagationLossModel"
+#define FIXED_RSS "ns3::FixedRssLossModel"
+#define THREE_LOG_DISTANCE "ns3::ThreeLogDistancePropagationLossModel"
+#define TWO_RAY_GROUND "ns3::TwoRayGroundPropagationLossModel"
+#define NAKAGAMI "ns3::NakagamiPropagationLossModel"
+
 NS_LOG_COMPONENT_DEFINE("WifiSimpleAdhoc");
 
+#ifdef PRELIMINARY
+std::ofstream outputFile("preliminary_results.csv");
+#else
 std::ofstream outputFile("results.csv");
+#endif
 
 void LogResults(const std::string &modelName, double distance, double duration, double signalStrength, double throughput) {
     if (outputFile.is_open()) {
@@ -82,9 +94,9 @@ main(int argc, char* argv[])
     uint32_t packetSize{1450}; // bytes
     uint32_t dataRate{75};    // mbps
     bool channelBonding = true;
-    std::string model = ("ns3::NakagamiPropagationLossModel");
+    std::string model = ("ns3::FriisPropagationLossModel");
     double distance{1}; // meters
-    double duration{2};  // seconds
+    double duration{60};  // seconds
     double interPacketInterval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
     uint32_t numPackets{(uint32_t)(duration / interPacketInterval)};
     bool verbose{false};
@@ -100,23 +112,25 @@ main(int argc, char* argv[])
     cmd.AddValue("numPackets", "number of packets generated", numPackets);
     cmd.AddValue("verbose", "turn on all WifiNetDevice log components", verbose);
     cmd.Parse(argc, argv);
-    double distance_{distance};
 
     // Propagation models to evaluate
     std::vector<std::string> propagationModels = {
-        "ns3::FriisPropagationLossModel",
-        "ns3::FixedRssLossModel",
-        "ns3::ThreeLogDistancePropagationLossModel",
-        "ns3::TwoRayGroundPropagationLossModel",
-        "ns3::NakagamiPropagationLossModel"
+        FRIIS,
+        FIXED_RSS,
+        THREE_LOG_DISTANCE,
+        TWO_RAY_GROUND,
+        NAKAGAMI
     };
 
     // csv table
-    outputFile << "PropagationModel,Distance,Duration,SignalStrength,Throughput" << std::endl;
+    outputFile << "propagationModel,distance,duration,signalStrength,throughput" << std::endl;
 
+    // simulation experiments
+    #ifndef PRELIMINARY
+    double distance_{distance};
     for (const auto &model : propagationModels) {
-        // reset
-        distance = distance_;
+        distance = distance_;   // reset
+    #endif
         double throughput = 0.0;
         do {
             NodeContainer c;
@@ -136,12 +150,12 @@ main(int argc, char* argv[])
             wifiPhy.Set("ChannelSettings", StringValue(std::string("{0, ") + (channelBonding ? "40, " : "20, ") + "BAND_5GHZ" + ", 0}"));
             wifiPhy.Set("TxPowerStart", DoubleValue(10));
             wifiPhy.Set("TxPowerEnd", DoubleValue(10));
-            // ns-3 supports RadioTap and Prism tracing extensions for 802.11b
-            wifiPhy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
 
             YansWifiChannelHelper wifiChannel;
             wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
-            wifiChannel.AddPropagationLoss(model);
+            if (model == FIXED_RSS) wifiChannel.AddPropagationLoss(model, "Rss", DoubleValue(-80));
+            else if (model == TWO_RAY_GROUND) wifiChannel.AddPropagationLoss(model, "Frequency", DoubleValue(5e9), "HeightAboveZ", DoubleValue(1));
+            else wifiChannel.AddPropagationLoss(model);
             wifiPhy.SetChannel(wifiChannel.Create());
 
             // Add a mac
@@ -183,6 +197,11 @@ main(int argc, char* argv[])
             // Output what we are doing
             NS_LOG_UNCOND("" << model << ", " << distance << "m, " << duration << "s");
 
+            #ifdef PRELIMINARY
+            // recalculate with new duration
+            numPackets = (uint32_t)(duration / interPacketInterval);
+            #endif
+
             Simulator::ScheduleWithContext(source->GetNode()->GetId(),
                                         Seconds(1.0),
                                         &GenerateTraffic,
@@ -215,9 +234,21 @@ main(int argc, char* argv[])
 
             LogResults(model, distance, duration, signalStrength, throughput);
 
-            distance += 1;
-        } while (throughput > 0);
+            #ifdef PRELIMINARY
+            duration += 1;
+            #else
+            distance += 5;
+            #endif
+
+        }
+        #ifdef PRELIMINARY
+        while (duration < 60);
+        #else
+        while (throughput > 0 && distance < 256);
+        #endif
+    #ifndef PRELIMINARY
     }
+    #endif
 
     outputFile.close();
 
