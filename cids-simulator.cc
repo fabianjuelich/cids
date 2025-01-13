@@ -41,8 +41,12 @@ using namespace ns3;
 #define TWO_RAY_GROUND "ns3::TwoRayGroundPropagationLossModel"
 #define NAKAGAMI "ns3::NakagamiPropagationLossModel"
 
-#define MAX_DURATION 60
-#define MAX_DISTANCE 256
+#define UDP_IP_HEADER_SIZE_BYTES 28
+
+#define DURATION_MAX 120
+#define DURATION_STEP 1
+#define DISTANCE_MAX 251
+#define DISTANCE_STEP 5
 
 NS_LOG_COMPONENT_DEFINE("CidsProject");
 
@@ -91,14 +95,13 @@ main(int argc, char* argv[])
     uint32_t dataRate{75};    // mbps
     bool channelBonding = true; // combining channels
     std::string model = ("ns3::FriisPropagationLossModel");
+    double distance{1}; // meters
     #ifdef PRELIMINARY
-    double distance{8}; // meters
     double duration{0}; // seconds
     #else
-    double distance{1};
     double duration{60};
     #endif
-    double interPacketInterval{((double)packetSize * 8) / (double)(dataRate * 1e6)};
+    double interPacketInterval{(((double)packetSize + UDP_IP_HEADER_SIZE_BYTES) * 8) / (double)(dataRate * 1e6)};
     uint32_t numPackets{(uint32_t)(duration / interPacketInterval)};
     bool verbose{false};
 
@@ -225,7 +228,7 @@ main(int argc, char* argv[])
             Simulator::Stop(Seconds(duration));
             Simulator::Run();
             Simulator::Destroy();
-            
+
             // Calculating the throughput
             FlowMonitor::FlowStatsContainer stats = flowMonitor->GetFlowStats();
             if (!stats.empty()) {
@@ -236,16 +239,16 @@ main(int argc, char* argv[])
             LogResults(model, distance, duration, signalStrength, throughput);
 
             #ifdef PRELIMINARY
-            duration += 1;
+            duration += DURATION_STEP;
             #else
-            distance += 5;
+            distance += DISTANCE_STEP;
             #endif
 
         }
         #ifdef PRELIMINARY
-        while (duration < MAX_DURATION);
+        while (duration <= DURATION_MAX);
         #else
-        while (throughput > 0 && distance < MAX_DISTANCE);
+        while (throughput > 0 && distance <= DISTANCE_MAX);
         #endif
     #ifndef PRELIMINARY
     }

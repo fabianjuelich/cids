@@ -20,7 +20,7 @@ grouped_results = results.groupby("propagationModel")
 plt.figure()
 duration = pre_results['duration']
 throughput = pre_results['throughput']
-plt.plot(duration, throughput, marker='o', color='orange')
+plt.plot(duration, throughput, color='orange')
 
 # plt.title(f"Runtime vs. UDP Throughput with {propagation_model} over {distance} m")
 plt.xlabel("Runtime (seconds)")
