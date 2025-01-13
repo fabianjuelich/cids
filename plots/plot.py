@@ -21,10 +21,14 @@ plt.figure()
 duration = pre_results['duration']
 throughput = pre_results['throughput']
 plt.plot(duration, throughput, color='orange')
+X = 60  # x value of horizontal line
+y_at_x = throughput[duration == X].iloc[0]
+plt.axhline(y=y_at_x, linestyle='--', label=f'{y_at_x:.2f} Mbps at {X} s')
 
 # plt.title(f"Runtime vs. UDP Throughput with {propagation_model} over {distance} m")
 plt.xlabel("Runtime (seconds)")
 plt.ylabel("Throughput (Mbps)")
+plt.legend()
 plt.grid(True)
 plt.savefig(os.path.join(PLOTS_DIR, 'runtime_vs_throughput.png'))
 
