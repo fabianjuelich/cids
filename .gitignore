@@ -2,11 +2,14 @@
 /*
 !.gitignore
 
+!README.md
+!LICENSE
+
 !nested-subdir/
 !subdir/
 !cids-simulator.cc
 !CMakeLists.txt
+
 !results/
 !plots/
-!LICENSE
-!Evaluating_Propagation_Models_in_Wi_Fi_Simulations_Using_ns_3.pdf
+!Evaluating_Propagation_Models_in_Wi_Fi_Simulations_Using_ns_3.*
